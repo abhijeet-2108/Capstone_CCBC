@@ -3,7 +3,7 @@
 
 ## Project Overview
 
-TrustLessCloud is a hybrid cloud–blockchain security platform designed to demonstrate how immutable blockchain records can strengthen cloud security auditing, zero-trust access control, and incident response.
+TrustLessCloud is a hybrid cloud–blockchain security platform designed to demonstrate how immutable blockchain records can strengthen cloud security auditing, zero‑trust access control, and incident response.
 
 The system integrates AWS services with Ethereum smart contracts deployed on the Sepolia test network.
 
@@ -15,220 +15,205 @@ Three core smart contracts power the system:
 
 The platform follows a hybrid architecture:
 
-Off-chain: AWS services perform scanning, detection, and automation  
-On-chain: blockchain stores tamper-proof evidence and approvals
+Off‑chain: AWS services perform scanning, detection, automation, and storage  
+On‑chain: blockchain stores tamper‑proof evidence and approvals
 
 ---
 
 # Development Roadmap
 
-This document outlines the next stages required to complete the project implementation.
+This document outlines the implementation stages required to complete the TrustLessCloud platform.
+
+The development focus now moves toward **AWS serverless deployment using Lambda functions**.
 
 ---
 
-# Stage 1 – Complete CSPM Scanner (Part 1)
+# Stage 1 – Prepare AWS Serverless Architecture
 
-The first milestone is completing the Cloud Security Posture Management module locally.
+The system will be organized into the following components:
 
-In this stage we will:
+Frontend Layer
+- React application
+- Hosted on Amazon S3
+- Optionally distributed via CloudFront
 
-- Configure AWS credentials for local development
-- Run the CSPM scanner against AWS resources
-- Scan services such as:
-  - EC2 Security Groups
-  - S3 buckets
-- Detect common misconfigurations such as:
-  - publicly exposed SSH/RDP ports
-  - public bucket configurations
+Backend Logic Layer
+- Implemented using AWS Lambda functions
+- Each Lambda performs a single responsibility
 
-The scanner will then:
+Infrastructure Services
+- API Gateway
+- CloudWatch / EventBridge
+- S3 storage
+- IAM roles and policies
 
-1. Generate a structured JSON report
-2. Hash the report using SHA‑256
-3. Store the report hash on the EvidenceLedger smart contract
-4. Verify the blockchain transaction on Sepolia
-
-Pipeline:
-
-AWS Scan → JSON Report → SHA256 Hash → Blockchain Evidence
-
----
-
-# Stage 2 – Improve CSPM Report Output
-
-Once the scanner works, we will refine the scan output for better usability.
-
-Improvements will include:
-
-- Structured finding objects containing:
-  - title
-  - severity
-  - resource ID
-  - details
-- Storing full reports off‑chain (e.g., S3)
-- Keeping only the hash and metadata on‑chain
-
-This approach preserves:
-
-- detailed reports for analysis
-- blockchain immutability for verification
+Blockchain Layer
+- EvidenceLedger
+- AccessPolicy
+- IncidentRegistry
+- Ethereum Sepolia Network
 
 ---
 
-# Stage 3 – Deploy Scanner to AWS Lambda
+# Stage 2 – Repository Structure for Deployment
 
-After validating the scanner locally, we will deploy it to AWS.
+```
+trustlesscloud/
+├── frontend/
+├── lambdas/
+│   ├── cspm-scan/
+│   ├── access-request/
+│   ├── sts-issue/
+│   ├── incident-handler/
+│   └── dashboard-api/
+├── contracts/
+├── infrastructure/
+└── docs/
+```
 
-This stage includes:
+---
 
-- converting the scanner to a Lambda handler
-- configuring environment variables
-- assigning IAM permissions
-- optionally scheduling scans using CloudWatch / EventBridge
+# Stage 3 – Implement CSPM Scan Lambda (Part 1)
 
-Architecture flow:
+Responsibilities:
 
-CloudWatch Trigger  
+- scan AWS resources
+- detect misconfigurations
+- generate JSON security report
+- hash the report using SHA‑256
+- store the full report in S3
+- store the hash in the EvidenceLedger smart contract
+
+Workflow:
+
+CloudWatch / EventBridge Trigger  
 ↓  
 Lambda CSPM Scanner  
 ↓  
 AWS Resource Scan  
 ↓  
-Report Hash Generated  
+JSON Report Created  
+↓  
+Report Stored in S3  
+↓  
+Hash Generated  
 ↓  
 EvidenceLedger Smart Contract
 
 ---
 
-# Stage 4 – Implement Access Control Module (Part 2)
+# Stage 4 – Implement Access Control Lambda (Part 2)
 
-Next we will implement the Zero‑Trust access system.
+Responsibilities:
 
-This stage will introduce:
+- receive access requests
+- evaluate policy rules
+- record approvals on the AccessPolicy smart contract
+- return approval status to the frontend
 
-- an off‑chain Access Engine
-- a simple access request workflow
-- policy or whitelist evaluation
+Workflow:
 
-If a request is approved:
-
-1. the approval will be recorded on‑chain using AccessPolicy
-2. access will be granted through temporary credentials
-
-This ensures:
-
-- no permanent permissions
-- immutable access approval records
+Frontend Access Request  
+↓  
+API Gateway  
+↓  
+Access Request Lambda  
+↓  
+Policy Evaluation  
+↓  
+Blockchain Approval
 
 ---
 
-# Stage 5 – Integrate AWS STS Temporary Credentials
+# Stage 5 – Temporary Credential Issuance (AWS STS)
 
-To enforce zero‑trust access, we will integrate AWS Security Token Service (STS).
+Responsibilities:
 
-In this stage we will:
+- generate short‑lived AWS credentials
+- provide credentials after successful approval
 
-- configure IAM roles for temporary access
-- generate short‑lived credentials
-- provide credentials only after successful policy validation
+Workflow:
 
-Flow:
-
-Access Request  
+Approved Access Request  
 ↓  
-Access Engine  
-↓  
-Blockchain Approval  
+STS Lambda  
 ↓  
 AWS STS Temporary Credentials
 
 ---
 
-# Stage 6 – Implement Incident Response Module (Part 3)
+# Stage 6 – Incident Response Lambda (Part 3)
 
-The next module focuses on security incident tracking.
+Responsibilities:
 
-Incidents may be triggered by:
+- detect suspicious activity
+- generate incident records
+- hash response actions
+- record incidents in IncidentRegistry
 
-- unauthorized access attempts
-- policy violations
-- suspicious AWS activity
-- failed authentication attempts
+Workflow:
 
-Detection sources may include:
-
-- CloudTrail
-- CloudWatch
-- AWS Config
-
-When an incident occurs:
-
-1. response actions are recorded
-2. actions are hashed
-3. the hash is written to IncidentRegistry
-
-This creates a tamper‑proof incident timeline.
+Security Event Detected  
+↓  
+Incident Handler Lambda  
+↓  
+Incident JSON Created  
+↓  
+Hash Generated  
+↓  
+IncidentRegistry Smart Contract
 
 ---
 
-# Stage 7 – Develop the Frontend Dashboard
+# Stage 7 – Develop Frontend Dashboard
 
-Once the backend modules are working, we will build a dashboard.
-
-The frontend will likely be implemented using React and hosted on S3 + CloudFront.
-
-The dashboard will display:
+React dashboard hosted on S3 will display:
 
 - CSPM scan results
 - blockchain verification hashes
-- access request form
-- access approval status
+- access request interface
+- access approval history
 - incident timeline
 
 ---
 
-# Stage 8 – Connect Frontend with Backend Services
+# Stage 8 – API Gateway Integration
 
-The frontend will:
-
-- retrieve scan summaries
-- fetch blockchain transaction hashes
-- display access approval records
-- show incident history
-
-This stage integrates:
-
-- AWS backend services
-- blockchain contracts
-- frontend visualization
+React Frontend  
+↓  
+API Gateway  
+↓  
+Lambda Functions  
+↓  
+AWS Services + Blockchain
 
 ---
 
 # Stage 9 – End‑to‑End System Testing
 
-Example scenarios:
-
-Misconfiguration Detection
+Example Scenario – Misconfiguration Detection
 
 Public SSH port detected  
 ↓  
-Scanner generates report  
+CSPM Lambda generates report  
 ↓  
-Hash recorded in EvidenceLedger
+Hash stored in EvidenceLedger
 
-Access Request
+Example Scenario – Access Request
 
 User requests access  
+↓  
+Access Lambda evaluates policy  
 ↓  
 AccessPolicy approval recorded  
 ↓  
 Temporary STS credentials issued
 
-Incident Recording
+Example Scenario – Incident Recording
 
-Unauthorized action detected  
+Unauthorized activity detected  
 ↓  
-Response actions executed  
+Incident Lambda triggered  
 ↓  
 IncidentRegistry updated
 
@@ -238,11 +223,10 @@ IncidentRegistry updated
 
 Tasks:
 
-- clean repository structure
+- organize repository
 - document setup instructions
-- prepare screenshots and demo scripts
-- prepare fallback data
-- clearly explain on‑chain vs off‑chain architecture
+- prepare demo walkthrough
+- explain on‑chain vs off‑chain architecture
 
 ---
 
@@ -251,11 +235,12 @@ Tasks:
 Off‑Chain Components
 
 - AWS Lambda
-- EC2 (optional backend)
+- API Gateway
+- Amazon S3
+- CloudFront
 - CloudWatch
 - CloudTrail
 - AWS Config
-- S3 storage
 - AWS STS
 
 On‑Chain Components
