@@ -18,6 +18,10 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function generateReportId() {
+  return `cspm-${Date.now()}`;
+}
+
 function calculateOverallSeverity(findings) {
   if (!findings || findings.length === 0) return 0;
   return Math.max(...findings.map(f => Number(f.severity || 0)));
@@ -29,7 +33,7 @@ async function uploadReportToS3(report) {
     throw new Error("Missing SCAN_REPORT_BUCKET environment variable");
   }
 
-  const key = `reports/cspm-scan-${Date.now()}.json`;
+  const key = `reports/cspm/${report.reportId}.json`;
 
   await s3.putObject({
     Bucket: bucket,
@@ -175,6 +179,7 @@ async function buildCspmReport() {
     : await runRealScan();
 
   return {
+    reportId: generateReportId(),
     scanType: "AWS_CSPM_SCAN",
     generatedAt: nowIso(),
     environment: process.env.ENVIRONMENT || "dev",
@@ -205,6 +210,7 @@ exports.handler = async (event) => {
       body: JSON.stringify({
         success: true,
         mode: (process.env.MOCK_SCAN || "true").toLowerCase() === "true" ? "mock" : "real",
+        reportId: report.reportId,
         reportHash,
         overallSeverity,
         reportLocation: s3Result,
