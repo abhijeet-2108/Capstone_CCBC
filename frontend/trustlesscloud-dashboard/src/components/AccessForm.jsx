@@ -1,11 +1,14 @@
 import React, { useState } from "react";
+import { submitAccessRequest } from "../services/api";
 
-export default function AccessForm() {
+export default function AccessForm({ onResult }) {
   const [form, setForm] = useState({
     userWallet: "",
     resourceId: "",
     durationSeconds: 900
   });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const handleChange = (e) => {
     setForm({
@@ -14,10 +17,24 @@ export default function AccessForm() {
     });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    alert("Access request form is ready. API integration will be added next.");
-    console.log("Access request:", form);
+    setError("");
+    setLoading(true);
+
+    try {
+      const result = await submitAccessRequest({
+        userWallet: form.userWallet,
+        resourceId: form.resourceId,
+        durationSeconds: Number(form.durationSeconds)
+      });
+
+      if (onResult) onResult(result);
+    } catch (err) {
+      setError(err.message || "Request failed");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -45,8 +62,11 @@ export default function AccessForm() {
           value={form.durationSeconds}
           onChange={handleChange}
         />
-        <button type="submit">Submit Access Request</button>
+        <button type="submit" disabled={loading}>
+          {loading ? "Submitting..." : "Submit Access Request"}
+        </button>
       </form>
+      {error && <p style={{ color: "red" }}>{error}</p>}
     </div>
   );
 }

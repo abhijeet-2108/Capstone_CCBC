@@ -27,33 +27,37 @@ exports.handler = async () => {
     const bucket = process.env.REPORT_BUCKET;
     if (!bucket) throw new Error("Missing REPORT_BUCKET");
 
-    const keys = await listJsonKeys(bucket, "reports/cspm/");
+    const keys = await listJsonKeys(bucket, "reports/incidents/");
 
-    const reports = [];
+    const incidents = [];
     for (const key of keys) {
-      const report = await loadJsonObject(bucket, key);
-      reports.push({
-        reportId: report.reportId,
-        generatedAt: report.generatedAt,
-        environment: report.environment,
-        findingCount: report.findingCount,
-        findings: report.findings || [],
+      const incident = await loadJsonObject(bucket, key);
+      incidents.push({
+        incidentId: incident.incidentId,
+        recordedAt: incident.recordedAt,
+        incidentType: incident.incidentType,
+        resourceId: incident.resourceId,
+        severity: incident.severity,
+        action: incident.action,
+        actionHash: incident.actionHash,
+        blockchain: incident.blockchain || null,
+        status: incident.status,
         s3Key: key
       });
     }
 
-    reports.sort((a, b) => new Date(b.generatedAt) - new Date(a.generatedAt));
+    incidents.sort((a, b) => new Date(b.recordedAt) - new Date(a.recordedAt));
 
     return {
       statusCode: 200,
       body: JSON.stringify({
         success: true,
-        count: reports.length,
-        reports
+        count: incidents.length,
+        incidents
       })
     };
   } catch (error) {
-    console.error("Reports Fetch Lambda failed:", error);
+    console.error("Incidents Fetch Lambda failed:", error);
 
     return {
       statusCode: 500,

@@ -1,8 +1,34 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import SummaryCard from "../components/SummaryCard";
-import { sampleCspm, sampleAccess, sampleIncident } from "../data/sampleData";
+import {
+  fetchReportsHistory,
+  fetchIncidentsHistory,
+  fetchAccessHistory
+} from "../services/api";
 
 export default function HomePage() {
+  const [latestReport, setLatestReport] = useState(null);
+  const [latestIncident, setLatestIncident] = useState(null);
+  const [latestAccess, setLatestAccess] = useState(null);
+
+  useEffect(() => {
+    async function loadDashboardData() {
+      try {
+        const reports = await fetchReportsHistory();
+        const incidents = await fetchIncidentsHistory();
+        const access = await fetchAccessHistory();
+
+        setLatestReport((reports.reports || [])[0] || null);
+        setLatestIncident((incidents.incidents || [])[0] || null);
+        setLatestAccess((access.accessRequests || [])[0] || null);
+      } catch (err) {
+        console.error("Failed to load dashboard data:", err);
+      }
+    }
+
+    loadDashboardData();
+  }, []);
+  
   return (
     <div>
       <h1>TrustLessCloud Dashboard</h1>
@@ -11,18 +37,18 @@ export default function HomePage() {
       <div className="card-grid">
         <SummaryCard
           title="Latest CSPM Report"
-          value={sampleCspm.reportId}
-          subtitle={`Findings: ${sampleCspm.summary.findingCount}`}
+          value={latestReport?.reportId || "No data"}
+          subtitle={latestReport ? `Findings: ${latestReport.findingCount}` : ""}
         />
         <SummaryCard
           title="Latest Access Request"
-          value={sampleAccess.requestId}
-          subtitle={sampleAccess.approved ? "Approved" : "Denied"}
+          value={latestAccess?.requestId || "No data"}
+          subtitle={latestAccess ? (latestAccess.approved ? "Approved" : "Denied") : ""}
         />
         <SummaryCard
           title="Latest Incident"
-          value={sampleIncident.incidentId}
-          subtitle={sampleIncident.status}
+          value={latestIncident?.incidentId || "No data"}
+          subtitle={latestIncident?.status || ""}
         />
       </div>
     </div>
