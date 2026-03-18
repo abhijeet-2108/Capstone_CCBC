@@ -41,7 +41,9 @@ exports.handler = async () => {
         durationSeconds: item.durationSeconds,
         approved: item.approved,
         reason: item.reason,
+        roleArn: item.roleArn || null,
         blockchain: item.blockchain || null,
+        environment: item.environment,
         s3Key: key
       });
     }

@@ -18,6 +18,10 @@ function normalizeAddress(address) {
   return (address || "").toLowerCase();
 }
 
+function normalizePermission(permission) {
+  return (permission || "").toLowerCase().trim();
+}
+
 // -----------------------------
 // Load whitelist/policies from S3
 // -----------------------------
@@ -41,18 +45,21 @@ async function loadPoliciesFromS3() {
 
   return parsed.policies.map(policy => ({
     ...policy,
-    userWallet: normalizeAddress(policy.userWallet)
+    userWallet: normalizeAddress(policy.userWallet),
+    permission: normalizePermission(policy.permission)
   }));
 }
 
-async function evaluateAccessRequest(userWallet, resourceId, durationSeconds) {
+async function evaluateAccessRequest(userWallet, resourceId, permission, durationSeconds) {
   const policies = await loadPoliciesFromS3();
   const normalizedWallet = normalizeAddress(userWallet);
+  const normalizedPermission = normalizePermission(permission);
 
   const match = policies.find(
     p =>
       p.userWallet === normalizedWallet &&
-      p.resourceId === resourceId
+      p.resourceId === resourceId &&
+      p.permission === normalizedPermission
   );
 
   if (!match) {
@@ -71,12 +78,13 @@ async function evaluateAccessRequest(userWallet, resourceId, durationSeconds) {
 
   return {
     approved: true,
-    reason: "Approved by whitelist policy"
+    reason: "Approved by whitelist policy",
+    matchedPolicy: match
   };
 }
 
 // -----------------------------
-// Blockchain: AccessPolicy
+// Blockchain: AccessPolicy v2
 // -----------------------------
 function getAccessContract() {
   const rpcUrl = process.env.RPC_URL;
@@ -91,32 +99,40 @@ function getAccessContract() {
   const wallet = new ethers.Wallet(privateKey, provider);
 
   const abi = [
-    "function approveAccess(address, string, uint256) external",
-    "event AccessApproved(bytes32 indexed approvalId, address indexed user, string resourceId, uint256 expirationTime)"
+    "function approveAccess(address, string, string, uint256, string) external returns (bytes32)",
+    "event AccessApproved(bytes32 indexed approvalId, address indexed user, string resourceId, string permission, string requestId, uint256 expirationTime)"
   ];
 
   return new ethers.Contract(contractAddress, abi, wallet);
 }
 
-async function recordApprovalOnChain(userWallet, resourceId, durationSeconds) {
+async function recordApprovalOnChain(userWallet, resourceId, permission, durationSeconds, requestId) {
   const contract = getAccessContract();
 
   const tx = await contract.approveAccess(
     userWallet,
     resourceId,
-    durationSeconds
+    permission,
+    durationSeconds,
+    requestId
   );
 
   const receipt = await tx.wait();
 
+  const approvalId = ethers.solidityPackedKeccak256(
+    ["address", "string", "string", "string"],
+    [userWallet, resourceId, permission, requestId]
+  );
+
   return {
+    approvalId,
     txHash: tx.hash,
     blockNumber: receipt.blockNumber
   };
 }
 
 // -----------------------------
-// Optional: save access request result to S3
+// Save access request result to S3
 // -----------------------------
 async function saveAccessRecordToS3(record) {
   const bucket = process.env.CONFIG_BUCKET;
@@ -151,11 +167,13 @@ function parseRequest(event) {
 
   const userWallet = body.userWallet;
   const resourceId = body.resourceId;
+  const permission = body.permission;
   const durationSeconds = Number(body.durationSeconds || 900);
 
   if (!userWallet) throw new Error("Missing userWallet");
   if (!ethers.isAddress(userWallet)) throw new Error("Invalid userWallet");
   if (!resourceId) throw new Error("Missing resourceId");
+  if (!permission) throw new Error("Missing permission");
   if (!durationSeconds || durationSeconds <= 0) {
     throw new Error("Invalid durationSeconds");
   }
@@ -165,6 +183,7 @@ function parseRequest(event) {
     requestedAt: nowIso(),
     userWallet,
     resourceId,
+    permission: normalizePermission(permission),
     durationSeconds
   };
 }
@@ -179,6 +198,7 @@ exports.handler = async (event) => {
     const policyResult = await evaluateAccessRequest(
       request.userWallet,
       request.resourceId,
+      request.permission,
       request.durationSeconds
     );
 
@@ -197,12 +217,7 @@ exports.handler = async (event) => {
         body: JSON.stringify({
           success: true,
           approved: false,
-          requestId: request.requestId,
-          requestedAt: request.requestedAt,
-          userWallet: request.userWallet,
-          resourceId: request.resourceId,
-          durationSeconds: request.durationSeconds,
-          reason: policyResult.reason,
+          ...deniedRecord,
           recordLocation: s3Result
         })
       };
@@ -211,13 +226,16 @@ exports.handler = async (event) => {
     const blockchainResult = await recordApprovalOnChain(
       request.userWallet,
       request.resourceId,
-      request.durationSeconds
+      request.permission,
+      request.durationSeconds,
+      request.requestId
     );
 
     const approvedRecord = {
       ...request,
       approved: true,
       reason: policyResult.reason,
+      roleArn: policyResult.matchedPolicy.roleArn || null,
       blockchain: blockchainResult,
       environment: process.env.ENVIRONMENT || "dev"
     };
@@ -229,13 +247,7 @@ exports.handler = async (event) => {
       body: JSON.stringify({
         success: true,
         approved: true,
-        requestId: request.requestId,
-        requestedAt: request.requestedAt,
-        userWallet: request.userWallet,
-        resourceId: request.resourceId,
-        durationSeconds: request.durationSeconds,
-        reason: policyResult.reason,
-        blockchain: blockchainResult,
+        ...approvedRecord,
         recordLocation: s3Result
       })
     };

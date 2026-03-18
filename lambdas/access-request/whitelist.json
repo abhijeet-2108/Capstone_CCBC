@@ -3,12 +3,16 @@
     {
       "userWallet": "0x91F5A3B60937dAC97631052CAceA30935d2c494C",
       "resourceId": "s3://trustlesscloud-scan-reports",
-      "maxDurationSeconds": 3600
+      "permission": "read",
+      "maxDurationSeconds": 3600,
+      "roleArn": "arn:aws:iam::123456789012:role/TrustLessCloudReadOnlyRole"
     },
     {
-      "userWallet": "0x6CB1aae5603A1c09A5096C867C308Fcbe25A402E",
-      "resourceId": "ec2://readonly-instance",
-      "maxDurationSeconds": 1800
+      "userWallet": "0x91F5A3B60937dAC97631052CAceA30935d2c494C",
+      "resourceId": "s3://trustlesscloud-scan-reports",
+      "permission": "write",
+      "maxDurationSeconds": 1800,
+      "roleArn": "arn:aws:iam::123456789012:role/TrustLessCloudWriteRole"
     }
   ]
 }

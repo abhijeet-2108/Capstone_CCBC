@@ -28,7 +28,7 @@ export default function HomePage() {
 
     loadDashboardData();
   }, []);
-  
+
   return (
     <div>
       <h1>TrustLessCloud Dashboard</h1>
@@ -43,7 +43,11 @@ export default function HomePage() {
         <SummaryCard
           title="Latest Access Request"
           value={latestAccess?.requestId || "No data"}
-          subtitle={latestAccess ? (latestAccess.approved ? "Approved" : "Denied") : ""}
+          subtitle={
+            latestAccess
+              ? `${latestAccess.approved ? "Approved" : "Denied"} • ${latestAccess.permission}`
+              : ""
+          }
         />
         <SummaryCard
           title="Latest Incident"

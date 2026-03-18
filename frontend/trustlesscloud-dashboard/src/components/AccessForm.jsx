@@ -5,6 +5,7 @@ export default function AccessForm({ onResult }) {
   const [form, setForm] = useState({
     userWallet: "",
     resourceId: "",
+    permission: "read",
     durationSeconds: 900
   });
   const [loading, setLoading] = useState(false);
@@ -26,6 +27,7 @@ export default function AccessForm({ onResult }) {
       const result = await submitAccessRequest({
         userWallet: form.userWallet,
         resourceId: form.resourceId,
+        permission: form.permission,
         durationSeconds: Number(form.durationSeconds)
       });
 
@@ -55,6 +57,15 @@ export default function AccessForm({ onResult }) {
           value={form.resourceId}
           onChange={handleChange}
         />
+        <select
+          name="permission"
+          value={form.permission}
+          onChange={handleChange}
+        >
+          <option value="read">read</option>
+          <option value="write">write</option>
+          <option value="admin">admin</option>
+        </select>
         <input
           type="number"
           name="durationSeconds"
