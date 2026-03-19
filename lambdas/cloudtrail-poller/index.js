@@ -272,15 +272,26 @@ async function recordIncidentOnChain(incidentId, actionHash, status) {
 // -----------------------------
 exports.handler = async (event) => {
   try {
+    console.log("CloudTrail poller started");
+    console.log("Incoming event:", JSON.stringify(event));
+
     const { lookbackHours } = parseInput(event);
+    console.log("Using lookbackHours:", lookbackHours);
 
     const recentEvents = await lookupRecentEvents(lookbackHours);
+    console.log("Scanned CloudTrail events:", recentEvents.length);
+
     const interesting = recentEvents.filter(isInterestingCloudTrailEvent);
+    console.log("Matched interesting events:", interesting.length);
 
     const createdIncidents = [];
 
     for (const evt of interesting) {
+      console.log("Checking event:", evt.EventId, evt.EventName, evt.EventSource);
+
       const alreadyProcessed = await hasProcessedEvent(evt.EventId);
+      console.log("Already processed?", alreadyProcessed);
+
       if (alreadyProcessed) continue;
 
       const incidentRecord = buildIncidentFromCloudTrail(evt);
@@ -318,7 +329,11 @@ exports.handler = async (event) => {
         ...finalRecord,
         recordLocation: s3Result
       });
+
+      console.log("Created incident for event:", evt.EventId);
     }
+
+    console.log("Created incidents count:", createdIncidents.length);
 
     return {
       statusCode: 200,
