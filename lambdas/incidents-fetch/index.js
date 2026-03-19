@@ -22,6 +22,14 @@ async function loadJsonObject(bucket, key) {
   return JSON.parse(result.Body.toString("utf-8"));
 }
 
+function getSignedUrl(bucket, key) {
+  return s3.getSignedUrl("getObject", {
+    Bucket: bucket,
+    Key: key,
+    Expires: 3600
+  });
+}
+
 exports.handler = async () => {
   try {
     const bucket = process.env.REPORT_BUCKET;
@@ -42,7 +50,9 @@ exports.handler = async () => {
         actionHash: incident.actionHash,
         blockchain: incident.blockchain || null,
         status: incident.status,
-        s3Key: key
+        sourceType: incident.sourceType || "manual",
+        s3Key: key,
+        viewUrl: getSignedUrl(bucket, key)
       });
     }
 

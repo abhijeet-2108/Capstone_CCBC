@@ -22,6 +22,14 @@ async function loadJsonObject(bucket, key) {
   return JSON.parse(result.Body.toString("utf-8"));
 }
 
+function getSignedUrl(bucket, key) {
+  return s3.getSignedUrl("getObject", {
+    Bucket: bucket,
+    Key: key,
+    Expires: 3600
+  });
+}
+
 exports.handler = async () => {
   try {
     const bucket = process.env.REPORT_BUCKET;
@@ -32,13 +40,20 @@ exports.handler = async () => {
     const reports = [];
     for (const key of keys) {
       const report = await loadJsonObject(bucket, key);
+
       reports.push({
         reportId: report.reportId,
         generatedAt: report.generatedAt,
         environment: report.environment,
         findingCount: report.findingCount,
         findings: report.findings || [],
-        s3Key: key
+        reportHash: report.reportHash || null,
+        overallSeverity: report.overallSeverity ?? null,
+        blockchain: report.blockchain || null,
+        status: report.status || null,
+        recentCloudTrailSummary: report.recentCloudTrailSummary || [],
+        s3Key: key,
+        viewUrl: getSignedUrl(bucket, key)
       });
     }
 

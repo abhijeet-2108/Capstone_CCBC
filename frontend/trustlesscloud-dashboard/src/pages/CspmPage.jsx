@@ -14,6 +14,9 @@ export default function CspmPage() {
       try {
         const data = await fetchReportsHistory();
         setHistory(data.reports || []);
+        if (!getLatestCspm() && data.reports?.length) {
+          setResult(data.reports[0]);
+        }
       } catch (err) {
         console.error("Failed to load reports history:", err);
       }
@@ -37,6 +40,10 @@ export default function CspmPage() {
     }
   };
 
+  const handleSelectReport = (report) => {
+    setResult(report);
+  };
+
   return (
     <div>
       <h1>CSPM Scan Results</h1>
@@ -51,13 +58,23 @@ export default function CspmPage() {
         <>
           <div className="card">
             <p><strong>Report ID:</strong> {result.reportId}</p>
-            <p><strong>Report Hash:</strong> {result.reportHash}</p>
-            <p><strong>Severity:</strong> {result.overallSeverity}</p>
-            <p><strong>Transaction Hash:</strong> {result.blockchain?.txHash}</p>
-            <p><strong>Block Number:</strong> {result.blockchain?.blockNumber}</p>
+            <p><strong>Report Hash:</strong> {result.reportHash || "Not available"}</p>
+            <p><strong>Severity:</strong> {result.overallSeverity ?? "Not available"}</p>
+            <p><strong>Transaction Hash:</strong> {result.blockchain?.txHash || "Not available"}</p>
+            <p><strong>Block Number:</strong> {result.blockchain?.blockNumber || "Not available"}</p>
+            <p><strong>Generated At:</strong> {result.generatedAt}</p>
+            <p><strong>Status:</strong> {result.status || "N/A"}</p>
+            {result.viewUrl && (
+              <p>
+                <strong>Full Report:</strong>{" "}
+                <a href={result.viewUrl} target="_blank" rel="noreferrer">
+                  Open JSON report
+                </a>
+              </p>
+            )}
           </div>
 
-          <FindingsTable findings={result.summary?.findings || []} />
+          <FindingsTable findings={result.findings || result.summary?.findings || []} />
         </>
       )}
 
@@ -69,14 +86,30 @@ export default function CspmPage() {
               <th>Report ID</th>
               <th>Generated At</th>
               <th>Finding Count</th>
+              <th>Severity</th>
+              <th>View</th>
             </tr>
           </thead>
           <tbody>
             {history.map((report) => (
               <tr key={report.reportId}>
-                <td>{report.reportId}</td>
+                <td>
+                  <button onClick={() => handleSelectReport(report)}>
+                    {report.reportId}
+                  </button>
+                </td>
                 <td>{report.generatedAt}</td>
                 <td>{report.findingCount}</td>
+                <td>{report.overallSeverity ?? "N/A"}</td>
+                <td>
+                  {report.viewUrl ? (
+                    <a href={report.viewUrl} target="_blank" rel="noreferrer">
+                      Open
+                    </a>
+                  ) : (
+                    "N/A"
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

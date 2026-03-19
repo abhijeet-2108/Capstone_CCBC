@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import IncidentTable from "../components/IncidentTable";
 import { submitIncident, fetchIncidentsHistory, getLatestIncident } from "../services/api";
 
 export default function IncidentPage() {
@@ -14,6 +13,9 @@ export default function IncidentPage() {
       try {
         const data = await fetchIncidentsHistory();
         setHistory(data.incidents || []);
+        if (!getLatestIncident() && data.incidents?.length) {
+          setResult(data.incidents[0]);
+        }
       } catch (err) {
         console.error("Failed to load incident history:", err);
       }
@@ -47,6 +49,10 @@ export default function IncidentPage() {
     }
   };
 
+  const handleSelectIncident = (incident) => {
+    setResult(incident);
+  };
+
   return (
     <div>
       <h1>Incident Timeline</h1>
@@ -58,17 +64,65 @@ export default function IncidentPage() {
       </div>
 
       {result && (
-        <>
-          <div className="card">
-            <p><strong>Incident ID:</strong> {result.incidentId}</p>
-            <p><strong>Action Hash:</strong> {result.actionHash}</p>
-            <p><strong>Transaction Hash:</strong> {result.blockchain?.txHash}</p>
-            <p><strong>Block Number:</strong> {result.blockchain?.blockNumber}</p>
-          </div>
-        </>
+        <div className="card">
+          <p><strong>Incident ID:</strong> {result.incidentId}</p>
+          <p><strong>Type:</strong> {result.incidentType}</p>
+          <p><strong>Resource:</strong> {result.resourceId}</p>
+          <p><strong>Severity:</strong> {result.severity}</p>
+          <p><strong>Action:</strong> {result.action}</p>
+          <p><strong>Status:</strong> {result.status}</p>
+          <p><strong>Source Type:</strong> {result.sourceType || "manual"}</p>
+          <p><strong>Action Hash:</strong> {result.actionHash}</p>
+          <p><strong>Transaction Hash:</strong> {result.blockchain?.txHash || "Not available"}</p>
+          <p><strong>Block Number:</strong> {result.blockchain?.blockNumber || "Not available"}</p>
+          {result.viewUrl && (
+            <p>
+              <strong>Full Report:</strong>{" "}
+              <a href={result.viewUrl} target="_blank" rel="noreferrer">
+                Open JSON report
+              </a>
+            </p>
+          )}
+        </div>
       )}
 
-      <IncidentTable incidents={history} />
+      <div className="card">
+        <h3>Incident History</h3>
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Incident ID</th>
+              <th>Recorded At</th>
+              <th>Type</th>
+              <th>Status</th>
+              <th>View</th>
+            </tr>
+          </thead>
+          <tbody>
+            {history.map((incident) => (
+              <tr key={incident.incidentId}>
+                <td>
+                  <button onClick={() => handleSelectIncident(incident)}>
+                    {incident.incidentId}
+                  </button>
+                </td>
+                <td>{incident.recordedAt}</td>
+                <td>{incident.incidentType}</td>
+                <td>{incident.status}</td>
+                <td>
+                  {incident.viewUrl ? (
+                    <a href={incident.viewUrl} target="_blank" rel="noreferrer">
+                      Open
+                    </a>
+                  ) : (
+                    "N/A"
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

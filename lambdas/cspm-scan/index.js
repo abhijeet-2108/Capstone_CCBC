@@ -3,8 +3,10 @@ const crypto = require("crypto");
 const { ethers } = require("ethers");
 
 // AWS clients
-const s3 = new AWS.S3();
-const ec2 = new AWS.EC2({ region: process.env.AWS_REGION || "us-east-1" });
+const region = process.env.AWS_REGION || "us-east-1";
+const s3 = new AWS.S3({ region });
+const ec2 = new AWS.EC2({ region });
+const cloudtrail = new AWS.CloudTrail({ region });
 
 // -----------------------------
 // Utility functions
@@ -42,10 +44,7 @@ async function uploadReportToS3(report) {
     ContentType: "application/json"
   }).promise();
 
-  return {
-    bucket,
-    key
-  };
+  return { bucket, key };
 }
 
 // -----------------------------
@@ -64,8 +63,7 @@ function getEvidenceContract() {
   const wallet = new ethers.Wallet(privateKey, provider);
 
   const abi = [
-    "function recordFinding(string, bytes32, uint8) external",
-    "event FindingRecorded(uint256 indexed findingId, string title, bytes32 reportHash, uint8 severity, uint256 timestamp, address recordedBy)"
+    "function recordFinding(string, bytes32, uint8) external"
   ];
 
   return new ethers.Contract(contractAddress, abi, wallet);
@@ -83,35 +81,38 @@ async function recordFindingOnChain(title, reportHash, severity) {
 }
 
 // -----------------------------
-// Mock scan mode
+// Mock mode
 // -----------------------------
 async function runMockScan() {
-  return [
-    {
-      type: "SECURITY_GROUP_OPEN_PORT",
-      title: "Public SSH port detected in security group sg-mock123",
-      severity: 2,
-      resourceId: "sg-mock123",
-      details: {
-        fromPort: 22,
-        toPort: 22,
-        cidr: "0.0.0.0/0",
-        description: "Mock finding for Lambda testing"
+  return {
+    findings: [
+      {
+        type: "SECURITY_GROUP_OPEN_PORT",
+        title: "Public SSH port detected in security group sg-mock123",
+        severity: 2,
+        resourceId: "sg-mock123",
+        details: {
+          fromPort: 22,
+          toPort: 22,
+          cidr: "0.0.0.0/0",
+          description: "Mock finding for Lambda testing"
+        }
+      },
+      {
+        type: "S3_PUBLIC_ACCESS_RISK",
+        title: "Bucket trustlesscloud-mock-bucket may allow public access",
+        severity: 1,
+        resourceId: "trustlesscloud-mock-bucket",
+        details: {
+          BlockPublicAcls: false,
+          IgnorePublicAcls: false,
+          BlockPublicPolicy: false,
+          RestrictPublicBuckets: false
+        }
       }
-    },
-    {
-      type: "S3_PUBLIC_ACCESS_RISK",
-      title: "Bucket trustlesscloud-mock-bucket may allow public access",
-      severity: 1,
-      resourceId: "trustlesscloud-mock-bucket",
-      details: {
-        BlockPublicAcls: false,
-        IgnorePublicAcls: false,
-        BlockPublicPolicy: false,
-        RestrictPublicBuckets: false
-      }
-    }
-  ];
+    ],
+    trailSummary: []
+  };
 }
 
 // -----------------------------
@@ -146,6 +147,7 @@ async function scanSecurityGroups() {
             severity: 2,
             resourceId: group.GroupId,
             details: {
+              groupName: group.GroupName,
               fromPort,
               toPort,
               cidr,
@@ -160,12 +162,71 @@ async function scanSecurityGroups() {
   return findings;
 }
 
+async function scanS3Buckets() {
+  const findings = [];
+  const buckets = await s3.listBuckets().promise();
+
+  for (const bucket of buckets.Buckets || []) {
+    try {
+      const result = await s3.getPublicAccessBlock({ Bucket: bucket.Name }).promise();
+      const cfg = result.PublicAccessBlockConfiguration || {};
+
+      const fullyBlocked =
+        cfg.BlockPublicAcls === true &&
+        cfg.IgnorePublicAcls === true &&
+        cfg.BlockPublicPolicy === true &&
+        cfg.RestrictPublicBuckets === true;
+
+      if (!fullyBlocked) {
+        findings.push({
+          type: "S3_PUBLIC_ACCESS_RISK",
+          title: `Bucket ${bucket.Name} may allow public access`,
+          severity: 1,
+          resourceId: bucket.Name,
+          details: cfg
+        });
+      }
+    } catch (err) {
+      findings.push({
+        type: "S3_PUBLIC_ACCESS_CHECK_FAILED",
+        title: `Could not fully evaluate bucket ${bucket.Name}`,
+        severity: 1,
+        resourceId: bucket.Name,
+        details: {
+          error: err.message
+        }
+      });
+    }
+  }
+
+  return findings;
+}
+
+async function fetchRecentTrailSummary() {
+  // CloudTrail LookupEvents supports recent management/Insights events, up to last 90 days.
+  // We use a small recent sample just for reporting context.
+  const response = await cloudtrail.lookupEvents({
+    MaxResults: 10
+  }).promise();
+
+  return (response.Events || []).map(evt => ({
+    eventId: evt.EventId,
+    eventName: evt.EventName,
+    eventSource: evt.EventSource,
+    eventTime: evt.EventTime,
+    username: evt.Username || null
+  }));
+}
+
 async function runRealScan() {
   const sgFindings = await scanSecurityGroups();
+  const s3Findings = await scanS3Buckets();
+  const trailSummary = await fetchRecentTrailSummary();
 
-  return [
-    ...sgFindings
-  ];
+  return {
+    findings: [...sgFindings, ...s3Findings],
+    trailSummary
+  };
 }
 
 // -----------------------------
@@ -174,7 +235,7 @@ async function runRealScan() {
 async function buildCspmReport() {
   const mode = (process.env.MOCK_SCAN || "true").toLowerCase();
 
-  const findings = mode === "true"
+  const result = mode === "true"
     ? await runMockScan()
     : await runRealScan();
 
@@ -183,21 +244,20 @@ async function buildCspmReport() {
     scanType: "AWS_CSPM_SCAN",
     generatedAt: nowIso(),
     environment: process.env.ENVIRONMENT || "dev",
-    findingCount: findings.length,
-    findings
+    findingCount: result.findings.length,
+    findings: result.findings,
+    recentCloudTrailSummary: result.trailSummary
   };
 }
 
 // -----------------------------
 // Lambda handler
 // -----------------------------
-exports.handler = async (event) => {
+exports.handler = async () => {
   try {
     const report = await buildCspmReport();
     const reportHash = sha256Hex(report);
     const overallSeverity = calculateOverallSeverity(report.findings);
-
-    const s3Result = await uploadReportToS3(report);
 
     const blockchainResult = await recordFindingOnChain(
       "AWS CSPM Scan",
@@ -205,19 +265,26 @@ exports.handler = async (event) => {
       overallSeverity
     );
 
+    const finalReport = {
+      ...report,
+      reportHash,
+      overallSeverity,
+      blockchain: blockchainResult,
+      status: "RECORDED"
+    };
+
+    const s3Result = await uploadReportToS3(finalReport);
+
     return {
       statusCode: 200,
       body: JSON.stringify({
         success: true,
         mode: (process.env.MOCK_SCAN || "true").toLowerCase() === "true" ? "mock" : "real",
-        reportId: report.reportId,
-        reportHash,
-        overallSeverity,
+        ...finalReport,
         reportLocation: s3Result,
-        blockchain: blockchainResult,
         summary: {
-          findingCount: report.findingCount,
-          findings: report.findings
+          findingCount: finalReport.findingCount,
+          findings: finalReport.findings
         }
       })
     };

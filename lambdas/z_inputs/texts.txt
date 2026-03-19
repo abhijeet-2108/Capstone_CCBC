@@ -1,0 +1,17 @@
+event inside eventbridge rule:
+event pattern:
+{
+  "source": ["aws.s3"],
+  "detail-type": ["AWS API Call via CloudTrail"],
+  "detail": {
+    "eventSource": ["s3.amazonaws.com"],
+    "eventName": ["PutBucketPublicAccessBlock", "PutBucketPolicy", "DeleteBucketPolicy", "PutBucketAcl"]
+  }
+}
+
+{
+  "source": ["aws.s3"],
+  "detail-type": ["AWS API Call via CloudTrail"]
+}
+
+
